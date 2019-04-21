@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 #_*_encoding:utf-8_*_
 import numpy as np
+from kmeans import KMeansClassifier
 class biKMeansClassifier():
     '''
     标准KMeans算法的簇数K是提前给定的，但是实际中K值是非常难以估计的，提出二分K-means算法。
