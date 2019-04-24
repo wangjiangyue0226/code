@@ -137,14 +137,14 @@ class Solution:
         return head.next
 
 if __name__ == '__main__':
-    #链表1:2->4->1
+    #链表1:4->4->4
     l1=MyLinkedList()
     l1.addAtHead(4)
     l1.addAtIndex(1,4)
     l1.addAtIndex(2,4)
     l1.travel()
 
-    # 链表2:5->6->4
+    # 链表2:6->6->9
     l2 = MyLinkedList()
     l2.addAtHead(6)
     l2.addAtIndex(1, 6)
