@@ -1,7 +1,6 @@
 #-*- coding:utf-8 -*-
 class ListNode:
     """单链表的结点"""
-
     def __init__(self, val):
         # val存放数据元素
         self.val = val
@@ -10,7 +9,6 @@ class ListNode:
 
 class MyLinkedList(object):
     """单链表"""
-
     def __init__(self):
         self._head = None
         self.length = 0
@@ -21,6 +19,7 @@ class MyLinkedList(object):
 
     def get_head(self):
         return self._head
+    
     def addAtHead(self, val):
         """头部添加元素"""
         # 先创建一个保存val值的节点
@@ -70,9 +69,7 @@ class MyLinkedList(object):
 
     def deleteAtIndex(self, index):
         """
-        Delete the index-th node in the linked list, if the index is valid.
-        :type index: int
-        :rtype: void
+        删除指定位置的元素
         """
         node = ListNode(0)
         if index <= 0 or index >= self.length:
