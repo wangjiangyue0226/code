@@ -102,8 +102,6 @@ class MyLinkedList(object):
             cur = cur.next
         print("")
 
-
-
 class Solution:
     def addTwoNumbers(self,l1,l2):
         '''
