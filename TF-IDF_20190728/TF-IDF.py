@@ -1,85 +1,154 @@
-#!/usr/bin/python
-# coding=utf-8
-# 采用TF-IDF方法提取文本关键词
+# -*- coding: utf-8 -*-
 
-import codecs
-import pandas as pd
+import jieba
+import jieba.posseg as psg
+import functools
+import math
 import numpy as np
-import jieba.posseg
-import jieba.analyse
 
-from sklearn.feature_extraction.text import TfidfTransformer
-from sklearn.feature_extraction.text import CountVectorizer
-"""
-       TF-IDF权重：
-           1、CountVectorizer 构建词频矩阵
-           2、TfidfTransformer 构建tfidf权值计算
-           3、文本的关键字
-           4、对应的tfidf矩阵
-"""
-# 数据预处理操作：分词，去停用词，词性筛选
-def dataPrepos(text, stopkey):
-    l = []
-    pos = ['n', 'nz', 'v', 'vd', 'vn', 'l', 'a', 'd']  # 定义选取的词性
-    seg = jieba.posseg.cut(text)  # 分词
-    for i in seg:
-        if i.word not in stopkey and i.flag in pos:  # 去停用词 + 词性筛选
-            l.append(i.word)
-    return l
+# 停用词表加载方法
+def get_stopword_list():
+    # 停用词表存储路径，每一行为一个词，按行读取进行加载
+    # 进行编码转换确保匹配准确率
+    stop_word_path = 'chinese_stopword.txt'
+    stopword_list = [sw.replace('\n', '') for sw in open(stop_word_path, encoding='UTF-8').readlines()]
+    return stopword_list
 
-# tf-idf获取文本top10关键词
-def getKeywords_tfidf(data,stopkey,topK):
-    idList, titleList, abstractList = data['id'], data['title'], data['abstract']
-    corpus = [] # 将所有文档输出到一个list中，一行就是一个文档
-    for index in range(len(idList)):
-        text = '%s。%s' % (titleList[index], abstractList[index]) # 拼接标题和摘要
-        text = dataPrepos(text,stopkey) # 文本预处理
-        text = " ".join(text) # 连接成字符串，空格分隔
-        corpus.append(text)
+# 分词方法，调用结巴接口
+def seg_to_list(sentence, pos=False):
+    if not pos:
+        # 不进行词性标注的分词方法
+        seg_list = jieba.cut(sentence)
+    else:
+        # 进行词性标注的分词方法
+        seg_list = psg.cut(sentence)
+    return seg_list
 
-    # 1、构建词频矩阵，将文本中的词语转换成词频矩阵
-    vectorizer = CountVectorizer()
-    X = vectorizer.fit_transform(corpus) # 词频矩阵,a[i][j]:表示j词在第i个文本中的词频
-    # 2、统计每个词的tf-idf权值
-    transformer = TfidfTransformer()
-    tfidf = transformer.fit_transform(X)
-    # 3、获取词袋模型中的关键词
-    word = vectorizer.get_feature_names()
-    # 4、获取tf-idf矩阵，a[i][j]表示j词在i篇文本中的tf-idf权重
-    weight = tfidf.toarray()
-    # 5、打印词语权重
-    ids, titles, keys = [], [], []
-    for i in range(len(weight)):
-        print("-------这里输出第", i+1 , u"篇文本的词语tf-idf------")
-        ids.append(idList[i])
-        titles.append(titleList[i])
-        df_word,df_weight = [],[] # 当前文章的所有词汇列表、词汇对应权重列表
-        for j in range(len(word)):
-            print(word[j],weight[i][j])
-            df_word.append(word[j])
-            df_weight.append(weight[i][j])
-        df_word = pd.DataFrame(df_word,columns=['word'])
-        df_weight = pd.DataFrame(df_weight,columns=['weight'])
-        word_weight = pd.concat([df_word, df_weight], axis=1) # 拼接词汇列表和权重列表
-        word_weight = word_weight.sort_values(by="weight",ascending = False) # 按照权重值降序排列
-        keyword = np.array(word_weight['word']) # 选择词汇列并转成数组格式
-        word_split = [keyword[x] for x in range(0,topK)] # 抽取前topK个词汇作为关键词
-        word_split = " ".join(word_split)
-        keys.append(word_split)
+# 去除干扰词
+def word_filter(seg_list, pos=False):
+    stopword_list = get_stopword_list()
+    filter_list = []
+    # 根据POS参数选择是否词性过滤
+    ## 不进行词性过滤，则将词性都标记为n，表示全部保留
+    for seg in seg_list:
+        if not pos:
+            word = seg
+            flag = 'n'
+        else:
+            word = seg.word
+            flag = seg.flag
+        if not flag.startswith('n'):
+            continue
+        # 过滤停用词表中的词，以及长度为<2的词
+        if not word in stopword_list and len(word) > 1:
+            filter_list.append(word)
 
-    result = pd.DataFrame({"id": ids, "title": titles, "key": keys},columns=['id','title','key'])
-    return result
+    return filter_list
 
+# 数据加载，pos为是否词性标注的参数，corpus_path为数据集路径
+def load_data(pos=False, corpus_path='corpus.txt'):
+    # 调用上面方式对数据集进行处理，处理后的每条数据仅保留非干扰词
+    doc_list = []
+    for line in open(corpus_path, 'r', encoding='UTF-8'):
+        content = line.strip()
+        seg_list = seg_to_list(content, pos)
+        filter_list = word_filter(seg_list, pos)
+        doc_list.append(filter_list)
+    return doc_list
 
-def main():
-    # 读取数据集
-    dataFile = 'data/sample_data.csv'
-    data = pd.read_csv(dataFile)
-    # 停用词表
-    stopkey = [w.strip() for w in codecs.open('data/stopWord.txt', 'r').readlines()]
-    # tf-idf关键词抽取
-    result = getKeywords_tfidf(data,stopkey,10)
-    result.to_csv("result/keys_TFIDF.csv",index=False)
+# idf值统计方法
+def train_idf(doc_list):
+    idf_dic = {}
+    # 总文档数
+    tt_count = len(doc_list)
+
+    # 每个词出现的文档数
+    for doc in doc_list:
+        for word in set(doc):
+            idf_dic[word] = idf_dic.get(word, 0.0) + 1.0
+
+    # 按公式转换为idf值，分母加1进行平滑处理
+    for k, v in idf_dic.items():
+        idf_dic[k] = math.log(tt_count / (1.0 + v))
+
+    # 对于没有在字典中的词，默认其仅在一个文档出现，得到默认idf值
+    default_idf = math.log(tt_count / (1.0))
+    return idf_dic, default_idf
+
+#  排序函数，用于topK关键词的按值排序
+def cmp(e1, e2):
+    res = np.sign(e1[1] - e2[1]) #若为正，res=1;若相等，res=0;若为负，res=-1
+    if res != 0:
+        return res
+    else:
+        a = e1[0] + e2[0]#若得分相同，则比较关键字
+        b = e2[0] + e1[0]
+        if a > b:
+            return 1
+        elif a == b:
+            return 0
+        else:
+            return -1
+
+# TF-IDF类
+class TfIdf(object):
+    # 四个参数分别是：训练好的idf字典，默认idf值，处理后的待提取文本，关键词数量
+    def __init__(self, idf_dic, default_idf, word_list, keyword_num):
+        self.word_list = word_list
+        self.idf_dic, self.default_idf = idf_dic, default_idf
+        self.tf_dic = self.get_tf_dic()
+        self.keyword_num = keyword_num
+
+    # 统计tf值
+    def get_tf_dic(self):
+        tf_dic = {}
+        for word in self.word_list:
+            tf_dic[word] = tf_dic.get(word, 0.0) + 1.0
+
+        tt_count = len(self.word_list)
+        for k, v in tf_dic.items():
+            tf_dic[k] = float(v) / tt_count
+
+        return tf_dic
+
+    # 按公式计算tf-idf
+    def get_tfidf(self):
+        tfidf_dic = {}
+        for word in self.word_list:
+            idf = self.idf_dic.get(word, self.default_idf)
+            tf = self.tf_dic.get(word, 0)
+
+            tfidf = tf * idf
+            tfidf_dic[word] = tfidf
+
+        tfidf_dic.items()
+        # 根据tf-idf排序，去排名前keyword_num的词作为关键词
+        for k, v in sorted(tfidf_dic.items(), key=functools.cmp_to_key(cmp), reverse=True)[:self.keyword_num]:
+            print(k + "/ ", end='')
+        print()
+
+def tfidf_extract(word_list, pos=False, keyword_num=10):
+    doc_list = load_data(pos)
+    idf_dic, default_idf = train_idf(doc_list)
+    tfidf_model = TfIdf(idf_dic, default_idf, word_list, keyword_num)
+    tfidf_model.get_tfidf()
 
 if __name__ == '__main__':
-    main()
+    text = '6月19日,《2012年度“中国爱心城市”公益活动新闻发布会》在京举行。' + \
+           '中华社会救助基金会理事长许嘉璐到会讲话。基金会高级顾问朱发忠,全国老龄' + \
+           '办副主任朱勇,民政部社会救助司助理巡视员周萍,中华社会救助基金会副理事长耿志远,' + \
+           '重庆市民政局巡视员谭明政。晋江市人大常委会主任陈健倩,以及10余个省、市、自治区民政局' + \
+           '领导及四十多家媒体参加了发布会。中华社会救助基金会秘书长时正新介绍本年度“中国爱心城' + \
+           '市”公益活动将以“爱心城市宣传、孤老关爱救助项目及第二届中国爱心城市大会”为主要内容,重庆市' + \
+           '、呼和浩特市、长沙市、太原市、蚌埠市、南昌市、汕头市、沧州市、晋江市及遵化市将会积极参加' + \
+           '这一公益活动。中国雅虎副总编张银生和凤凰网城市频道总监赵耀分别以各自媒体优势介绍了活动' + \
+           '的宣传方案。会上,中华社会救助基金会与“第二届中国爱心城市大会”承办方晋江市签约,许嘉璐理' + \
+           '事长接受晋江市参与“百万孤老关爱行动”向国家重点扶贫地区捐赠的价值400万元的款物。晋江市人大' + \
+           '常委会主任陈健倩介绍了大会的筹备情况。'
+
+    pos = True
+    seg_list = seg_to_list(text, pos)
+    filter_list = word_filter(seg_list, pos)
+
+    print('TF-IDF模型结果：')
+    tfidf_extract(filter_list)
